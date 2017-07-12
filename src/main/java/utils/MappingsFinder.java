@@ -208,6 +208,19 @@ public class MappingsFinder extends OpVisitorBase {
         List<Tuple2<Concept,List<ConjunctiveQuery>>> partialQueriesPerConcept = Lists.newArrayList();
         while (iterator.hasNext()) {
             Concept c = iterator.next();
+            Map<Wrapper, ConjunctiveQuery> m = Maps.newHashMap();
+            for (Feature f : c.getFeatures()) {
+                for (Wrapper w : f.getWrappers()) {
+                    if (!m.containsKey(w)) m.put(w,new ConjunctiveQuery());
+                    m.get(w).getSources().add(w);
+                    m.get(w).getProjections().add(new Tuple2<>(f.getURI(),new Attribute(w,Utils.nn(getAttributeFromSourceLevel(f.getURI(),w)))));
+                }
+            }
+            partialQueriesPerConcept.add(new Tuple2<>(c,Lists.newArrayList(m.values())));
+        }
+        /**
+        while (iterator.hasNext()) {
+            Concept c = iterator.next();
             List<ConjunctiveQuery> partialQueries = Lists.newArrayList();
             List<Set<Wrapper>> wrappersForC = Lists.newArrayList();
             c.getFeatures().forEach(f -> wrappersForC.add(Sets.newHashSet(f.getWrappers())));
@@ -251,6 +264,7 @@ public class MappingsFinder extends OpVisitorBase {
                 partialQueriesPerConcept.add(new Tuple2<>(c, partialQueries));
             }
         }
+        **/
         // So, now we have the partial CQs to fetch the attributes at the concept level.
         // The next step is to find the inter-concept combinations of CQs that can be joined
         // Recall we have our graph structure that tells us which wrappers can be used to join concepts, hence we need to
@@ -258,6 +272,7 @@ public class MappingsFinder extends OpVisitorBase {
         // is in the list of wrappers in the edge between C1 and C2.
         Tuple2<Concept,List<ConjunctiveQuery>> current = partialQueriesPerConcept.get(0);
         for (int i = 1; i < partialQueriesPerConcept.size(); ++i) {
+
             Tuple2<Concept,List<ConjunctiveQuery>> next = partialQueriesPerConcept.get(i);
             Set<List<ConjunctiveQuery>> cartesianProduct = Sets.cartesianProduct(Sets.newHashSet(current._2()),Sets.newHashSet(next._2()));
 
@@ -271,7 +286,8 @@ public class MappingsFinder extends OpVisitorBase {
 
                 // b) They don't share sources, must join them using IDs
                 if (Collections.disjoint(cp.get(0).getSources(),cp.get(1).getSources())) {
-                    // ID is in "current", I have to try all ways to obtain the FK from "next" and join it with the ID I already projected from "currents"
+                    // ID is in "current", I have to try all ways to obtain the FK fromedd
+                    // "next" and join it with the ID I already projected from "currents"
                     if (G.getAllEdges(current._1(), next._1()).size() > 0) {
                         List<Wrapper> listOfWrappersForConcepts = Iterables.getOnlyElement(G.getAllEdges(current._1(), next._1())).getWrappers();
                         for (Wrapper w : listOfWrappersForConcepts) {
@@ -299,10 +315,19 @@ public class MappingsFinder extends OpVisitorBase {
             }
             current = new Tuple2<>(next._1(),combined);
         }
+        List<ConjunctiveQuery> finalList = Lists.newArrayList();
+        current._2().forEach(cq -> {
+            Set<String> features = Sets.newHashSet();
+            cq.getProjections().forEach(proj -> {
+                features.add(proj._1());
+            });
+            if (features.containsAll(targetSchema)) finalList.add(cq);
+        });
+
         // Final, output the UNION of CQs
-        System.out.print(current._2().get(0).relationalAlgebraPrint());
-        for (int i = 1; i < current._2().size(); ++i) {
-            System.out.print(" UNION "+current._2().get(i).relationalAlgebraPrint());
+        System.out.println(finalList.get(0).relationalAlgebraPrint());
+        for (int i = 1; i < finalList.size(); ++i) {
+            System.out.println(" UNION "+finalList.get(i).relationalAlgebraPrint());
         }
         System.out.println("");
     }
